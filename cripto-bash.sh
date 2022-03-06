@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Author: Jose Navarro (calamarte)
-# Tuto https://youtu.be/_OpD54Q9hZc?t=1643
+# Tuto https://youtu.be/_OpD54Q9hZc?t=3969
 # Required: html2text
 
 #Colors
@@ -46,14 +46,36 @@ function get_unconfirmed() {
     touch ut.tmp
 
     while [ $(cat ut.tmp | wc -l) == 0 ]; do
-        curl -s "$trans_all_url" | 
-        html2text                |  
-        grep "Hash" -A 2         |   
-        grep -E -o '\[\w+\]'     |   
-        tr -d '[]' > ut.tmp                
+        curl -s $trans_all_url |
+        html2text              |
+        sed -r '/^\s*$/d' > ut.tmp
     done
 
-    cat ut.tmp
+    hashes=$(
+        cat ut.tmp           |
+        grep "Hash" -A 2     |   
+        grep -E -o '\[\w+\]' |   
+        tr -d '[]'                 
+    ) 
+
+
+    > ut.table
+    for hash in $hashes; do
+        block=$(grep $hash -A 6 ut.tmp)
+        echo $block | awk -v h=$hash '{print h" "$3" "$6" "$NF}' >> ut.table
+    done
+
+    total=$(
+        cat ut.table      |
+        awk '{print $NF}' |
+        tr -d '$,'        |
+        paste -s -d +     |
+        bc
+    )
+
+    echo -ne "${yellowColor}"
+    cat ut.table | column -o " | " -t -N 'Hash,Time,Amount(BTC),Amount($)' 
+    echo -ne "${endColor}"
 }
 
 while getopts "e:h:" arg; do
