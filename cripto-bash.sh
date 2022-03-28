@@ -73,6 +73,8 @@ function get_unconfirmed() {
         bc
     )
 
+    echo $total | awk '{print "Total -- -- $"$1}' >> ut.table
+
     echo -ne "${yellowColor}"
     cat ut.table | column -o " | " -t -N 'Hash,Time,Amount(BTC),Amount($)' 
     echo -ne "${endColor}"
