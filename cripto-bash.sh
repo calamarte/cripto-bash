@@ -2,7 +2,7 @@
 
 # Author: Jose Navarro (calamarte)
 # Tuto https://youtu.be/_OpD54Q9hZc?t=3969
-# Required: html2text
+# Required: html2text jq
 
 #Colors
 greenColor="\e[0;32m\033[1m"
@@ -26,6 +26,7 @@ lang="en"
 trans_all_url="https://www.blockchain.com/$lang/btc/unconfirmed-transactions"
 trans_url="https://www.blockchain.com/$lang/btc/tx"
 address_url="https://www.blockchain.com/$lang/btc/address"
+parse_url="https://blockchain.info/ticker?base=BTC"
 tmp=$(mktemp -d)
 
 function usage() {
@@ -111,10 +112,10 @@ function inspect_transaction() {
     awk 'NR%2 {printf "%s ",$0;next;}1' > $tmp/tr-outputs.tmp
     
     grep 'Inputs' -A $((21 * $inNumber)) $tmp/tr.tmp     |
-    grep 'Address' -A 6                 |
-    grep -E -o '(\[\w+\]|.*BTC$)'       |
-    tr -d '[]'                          |
-    awk 'NR%2 {printf "%s ",$0;next;}1' |
+    grep 'Address' -A 6                                  |
+    grep -E -o '(\[\w+\]|.*BTC$)'                        |
+    tr -d '[]'                                           |
+    awk 'NR%2 {printf "%s ",$0;next;}1'                  |
     sed 's/ BTC/-BTC/g' > $tmp/tr-inputs.tmp
 
     echo "$fromToHashs $totals" | tr '\n' ' ' > $tmp/tr.table
@@ -136,6 +137,53 @@ function inspect_transaction() {
     echo -ne "${endColor}"
 }
 
+function inspect_address() {
+    touch $tmp/addr.tmp
+
+    while ! [[ -s $tmp/addr.tmp ]]; do
+        curl -s $address_url/$1  |
+        html2text > $tmp/addr.tmp
+    done
+
+    values=$(
+        grep -E 'Transactions|Total Received|Total Sent|Final Balance' -A 2 $tmp/addr.tmp |
+        head -n -4 | grep -E '^[0-9].*$' | tr ' ' '-' | xargs
+    )
+
+    echo -ne "${yellowColor}"
+    echo $values | column -o " | " -t -N 'Transactions,Total Received,Total Sent,Final Balance'
+    echo -ne "${endColor}"
+
+    n=0
+    parsedValues=""
+    for v in $(echo $values | sed s/-BTC//g); do
+        [[ $n -eq 0  ]] && n=1 && continue
+
+        parsed=$(parser $v)
+        parsedValues+="${parsed} "
+    done
+
+    echo -e '\n'
+
+    echo -ne "${greenColor}"
+    echo $parsedValues | column -o " | " -t -N 'Total Received (USD),Total Sent (USD),Final Balance (USD)'
+    echo -ne "${endColor}"
+    
+}
+
+function parser() {
+    touch $tmp/parser.tmp
+
+    while ! [[ -s $tmp/parser.tmp ]]; do
+        curl -s $parse_url  |
+        html2text > $tmp/parser.tmp
+    done
+
+    value=$(jq '.USD.last' $tmp/parser.tmp)
+
+    echo  "$(echo "$value * $1" | bc)"
+}
+
 while getopts "e:h:" arg; do
     case $arg in
         e) mode=$OPTARG;;
@@ -148,7 +196,7 @@ tput civis
 case $mode in
     unconfirmed) get_unconfirmed;;
     inspect) inspect_transaction ${@:(-1)};;
-    address) echo $mode;;
+    address) inspect_address ${@:(-1)};;
     *) usage;;
 esac
 
